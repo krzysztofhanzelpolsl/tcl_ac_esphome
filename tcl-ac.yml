@@ -1,25 +1,33 @@
 esphome:
-  name: tcl-ac
+  name: tclac
+  friendly_name: TCLAC
 
-esp8266:
-  board: d1_mini
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
 
 external_components:
+#  - source:
+#      type: git
+#      url: https://github.com/krzysztofhanzelpolsl/tcl_ac_esphome
+#    components: [tcl_climate]
   - source:
-      type: git
-      url: https://github.com/DEMs86/tcl_ac_esphome/
+      type: local
+      path: tcl_climate
     components: [tcl_climate]
-#  or local
-#  - source: components
+
+
+# Enable logging
+logger:
+  level: VERBOSE
+  baud_rate: 0
+
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-
-api:
-
-ota:
-  password: 123
+  
 
 uart:
   id: uart_bus
@@ -28,15 +36,52 @@ uart:
   baud_rate: 9600
   parity: EVEN
 
-logger:
-  level: VERBOSE
-  baud_rate: 0
-
 climate:
   - platform: tcl_climate
     id: tcl_custom_climate
     uart_id: uart_bus
     name: "HAVC TCL"
+
+switch:
+  - platform: template
+    name: "Mute (Wyciszenie Buzzera)"
+    id: mute_buzzer_switch
+    icon: "mdi:volume-off"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - lambda: |-
+          id(tcl_custom_climate).set_mute_buzzer(true);
+    turn_off_action:
+      - lambda: |-
+          id(tcl_custom_climate).set_mute_buzzer(false);
+  - platform: template
+    name: "Tryb ECO"
+    id: eco_mode_switch
+    icon: "mdi:leaf"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - lambda: |-
+          id(tcl_custom_climate).set_eco_mode(true);
+    turn_off_action:
+      - lambda: |-
+          id(tcl_custom_climate).set_eco_mode(false);
+  - platform: template
+    name: "Wyświetlacz AC"
+    id: display_switch
+    icon: "mdi:led-on"
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - lambda: |-
+          id(tcl_custom_climate).set_display_on(true);
+    turn_off_action:
+      - lambda: |-
+          id(tcl_custom_climate).set_display_on(false);
 
 select:
   - platform: template
