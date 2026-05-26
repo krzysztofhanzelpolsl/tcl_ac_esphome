@@ -99,10 +99,10 @@ void TCLClimate::build_set_cmd(get_cmd_resp_t *get_cmd_resp) {
     m_set_cmd.data.power = get_cmd_resp->data.power;
     m_set_cmd.data.off_timer_en = 0;
     m_set_cmd.data.on_timer_en = 0;
-    m_set_cmd.data.beep = 1;
-    m_set_cmd.data.disp = 1;
-    m_set_cmd.data.eco = 0;
-    m_set_cmd.data.turbo = get_cmd_resp->data.turbo;
+	m_set_cmd.data.beep = this->mute_buzzer ? 0 : 1;    
+	m_set_cmd.data.disp = this->display_on ? 1 : 0;
+	m_set_cmd.data.eco = this->eco_mode ? 1 : 0;    	
+	m_set_cmd.data.turbo = get_cmd_resp->data.turbo;
     m_set_cmd.data.mute = get_cmd_resp->data.mute;
 
     // Mode mapping using lookup table
@@ -255,28 +255,47 @@ void TCLClimate::control(const climate::ClimateCall &call) {
         should_build_cmd = true;
     }
 
-    if (call.get_swing_mode().has_value()) {
+	if (call.get_swing_mode().has_value()) {
         climate::ClimateSwingMode swing_mode = *call.get_swing_mode();
 
         switch(swing_mode) {
             case climate::CLIMATE_SWING_OFF:
-                get_cmd_resp.data.hswing = 0;
                 get_cmd_resp.data.vswing = 0;
+                get_cmd_resp.data.vswing_mv = 0;
+                get_cmd_resp.data.vswing_fix = 0;
                 break;
             case climate::CLIMATE_SWING_BOTH:
-                get_cmd_resp.data.hswing = 1;
-                get_cmd_resp.data.vswing = 1;
-                break;
             case climate::CLIMATE_SWING_VERTICAL:
-                get_cmd_resp.data.hswing = 0;
                 get_cmd_resp.data.vswing = 1;
+                get_cmd_resp.data.vswing_mv = 1; // 1 = Move full
+                get_cmd_resp.data.vswing_fix = 0;
                 break;
             case climate::CLIMATE_SWING_HORIZONTAL:
-                get_cmd_resp.data.hswing = 1;
                 get_cmd_resp.data.vswing = 0;
+                get_cmd_resp.data.vswing_mv = 0;
+                get_cmd_resp.data.vswing_fix = 0;
                 break;
         }
+        
+        // Wymuszamy wyłączenie poziomego swingu, gdyż urządzenie go nie obsługuje
+        get_cmd_resp.data.hswing = 0;
+        get_cmd_resp.data.hswing_mv = 0;
+        get_cmd_resp.data.hswing_fix = 0;
+
         should_build_cmd = true;
+    } else {
+        // Zabezpieczenie przed zmianą swingu przy sterowaniu samą temperaturą/wiatrakiem.
+        // Pobieramy aktualny stan z interfejsu (this->swing_mode) i ładujemy do ramki.
+        if (this->swing_mode == climate::CLIMATE_SWING_VERTICAL || this->swing_mode == climate::CLIMATE_SWING_BOTH) {
+            get_cmd_resp.data.vswing_mv = 1;
+        } else {
+            get_cmd_resp.data.vswing_mv = 0;
+        }
+        get_cmd_resp.data.vswing_fix = 0;
+        
+        get_cmd_resp.data.hswing = 0;
+        get_cmd_resp.data.hswing_mv = 0;
+        get_cmd_resp.data.hswing_fix = 0;
     }
 
     // Updated custom fan mode handling
@@ -395,6 +414,52 @@ void TCLClimate::print_hex_str(uint8_t *buffer, int len) {
     }
 
     ESP_LOGD("TCL", "Received: %s", str);
+}
+
+void TCLClimate::set_mute_buzzer(bool state) {
+  if (this->mute_buzzer == state) return;
+  
+  this->mute_buzzer = state;
+  ESP_LOGI("TCL", "Buzzer state changed to: %s", state ? "MUTED" : "UNMUTED");
+
+  // Pobieramy ostatni znany stan klimatyzatora
+  get_cmd_resp_t get_cmd_resp = {0};
+  memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
+  
+  // Wymuszamy zbudowanie i wysłanie "pustej" komendy aktualizującej. 
+  // Dzięki temu AC od razu przyjmie nowy stan buzzera, bez czekania na zmianę temperatury.
+  build_set_cmd(&get_cmd_resp);
+  ready_to_send_set_cmd_flag = true;
+}
+
+void TCLClimate::set_eco_mode(bool state) {
+  if (this->eco_mode == state) return;
+  
+  this->eco_mode = state;
+  ESP_LOGI("TCL", "ECO mode state changed to: %s", state ? "ON" : "OFF");
+
+  // Pobieramy ostatni znany stan klimatyzatora
+  get_cmd_resp_t get_cmd_resp = {0};
+  memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
+  
+  // Zbuduj i wyślij ramkę z nowym stanem ECO
+  build_set_cmd(&get_cmd_resp);
+  ready_to_send_set_cmd_flag = true;
+}
+
+void TCLClimate::set_display_on(bool state) {
+  if (this->display_on == state) return;
+  
+  this->display_on = state;
+  ESP_LOGI("TCL", "Display state changed to: %s", state ? "ON" : "OFF");
+
+  // Pobieramy ostatni znany stan klimatyzatora
+  get_cmd_resp_t get_cmd_resp = {0};
+  memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
+  
+  // Zbuduj i wyślij ramkę z nowym stanem wyświetlacza
+  build_set_cmd(&get_cmd_resp);
+  ready_to_send_set_cmd_flag = true;
 }
 
 void TCLClimate::loop() {
