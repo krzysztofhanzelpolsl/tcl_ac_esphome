@@ -2,12 +2,12 @@ esphome:
   name: tcl-ac
 
 esp8266:
-  board: esp07
+  board: d1_mini
 
 external_components:
   - source:
       type: git
-      url: https://github.com/lNikazzzl/tcl_ac_esphome
+      url: https://github.com/DEMs86/tcl_ac_esphome/
     components: [tcl_climate]
 #  or local
 #  - source: components
